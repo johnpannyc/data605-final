@@ -1,0 +1,1271 @@
+---
+title: "data 605 final problem 2"
+author: "Jun Pan"
+date: "April 29, 2019"
+output: html_document
+---
+
+
+
+Problem 2
+You are to register for Kaggle.com (free) and compete in the House Prices: Advanced Regression Techniques competition.  https://www.kaggle.com/c/house-prices-advanced-regression-techniques .  I want you to do the following.
+
+5 points.  Descriptive and Inferential Statistics. Provide univariate descriptive statistics and appropriate plots for the training data set. Providea scatterplot matrix for at least two of the independent variables and the dependent variable. Derive a correlation matrix for any three quantitative variables in the dataset.  Test the hypotheses that the correlations betweeneach pairwise set of variables is 0 and provide an80% confidence interval.  Discuss the meaning of your analysis.  Would you be worried about familywise error? Why or why not?
+
+Prepare working environment.  Load the most fselectuently used packages for data analysis.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(car)
+library(caret)
+library(corrplot)
+library(data.table)
+library(dplyr)
+library(geoR)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(knitr)
+library(MASS)
+library(naniar)
+library(nortest)
+library(pander)
+library(psych)
+library(testthat)
+library(data.table)
+library(survival)
+library(survminer)
+library(survMisc)
+library(tidyverse)
+library(kableExtra)
+```
+to use for prediction submitted to Kaggle.com) files from github.
+
+
+#data exploration
+load the train (housing characteristics data) and test (
+```{r}
+train <- read.csv("https://raw.githubusercontent.com/johnpannyc/data605-final/master/train.csv")
+```
+
+```{r}
+test<- read.csv("https://raw.githubusercontent.com/johnpannyc/data605-final/master/test.csv")
+```
+
+
+Using "glimps" function to dig deeper into the datasets.  We can that part of the variables are numerical, part of the data are categorical. Categorical variables need to be convert to integer (levels) for further analysis.  Also, there are some missing values in the dataset.
+```{r}
+glimpse(train)
+```
+
+This dataset is almost the same as training except without SalePrice column.  We need to use the model based on train data to predict the salesprice for the test dataset and submit to kaggle.
+```{r}
+glimpse(test)
+```
+
+
+
+Visualize all numberical variables
+Select numberical variables togeter
+```{r}
+ntrain<-select_if(train, is.numeric)
+```
+
+
+Density plot of variables 
+```{r}
+ntrain <- as.data.frame((ntrain))
+
+par(mfrow=c(3, 3))
+colnames <- dimnames(ntrain)[[2]]
+
+  for(col in 2:ncol(ntrain)) {
+
+    d <- density(na.omit(ntrain[,col]))
+   
+    plot(d, type="n", main=colnames[col])
+    polygon(d, col="light green", border="red")
+  }
+```
+
+```{r}
+vis_miss(train)
+```
+
+
+```{r}
+n_miss(train)
+```
+
+
+```{r}
+prop_miss(train)
+```
+
+```{r}
+miss_var_summary(train)
+```
+
+```{r}
+miss_case_summary(train)
+```
+
+
+```{r}
+gg_miss_var(train)
+```
+
+
+```{r}
+vis_miss(test)
+```
+
+```{r}
+n_miss(test)
+```
+
+
+```{r}
+prop_miss(test)
+```
+
+```{r}
+sapply(train, function(x) sum(is.na(x))) %>% kable() %>% kable_styling()
+```
+
+
+```{r}
+sapply(test, function(x) sum(is.na(x))) %>% kable() %>% kable_styling()
+```
+
+
+
+
+
+
+
+
+
+
+#Univariate descriptive statistics
+```{r}
+selectCols <- c('GrLivArea', 'SalePrice')
+select.data <- train[selectCols]
+
+kable(select.data[sample(nrow(select.data), 12), ] , format="pandoc", align="l", row.names = F, caption = "Sample of Univariate Descriptive Stat.")
+```
+
+
+
+
+```{r}
+summary(select.data)
+```
+
+
+Create correlation matrixes based on obsevervation and probability
+```{r}
+total.obs <- nrow(select.data)
+
+#No. of observations, X>x and Y>y
+xy.pos.data <- select.data[which(select.data$GrLivArea > 1130 & select.data$SalePrice > 163000),]
+xy.pos <- nrow(xy.pos.data)
+
+#No. of observations,X<x and Y<y
+xy.neg.data <- select.data[which(select.data$GrLivArea <= 1130 & select.data$SalePrice <= 163000),]
+xy.neg <- nrow(xy.neg.data)
+
+#No. of observations, X>x and Y<y
+x.pos.y.neg.data <- select.data[which(select.data$GrLivArea > 1130 & select.data$SalePrice <= 163000),]
+x.pos.y.neg <- nrow(x.pos.y.neg.data)
+
+#No. of observations, X<x and Y>y
+x.neg.y.pos.data <- select.data[which(select.data$GrLivArea <= 1130 & select.data$SalePrice > 163000),]
+x.neg.y.pos <- nrow(x.neg.y.pos.data)
+
+house.data<- matrix(c(xy.pos, x.neg.y.pos,x.pos.y.neg,xy.neg), nrow=2, ncol=2)
+#add column and row totals
+house.data<- cbind(house.data, Total = rowSums(house.data))
+house.data<- rbind(house.data, Total = colSums(house.data))
+
+rownames(house.data)<- c('(X>x)', '(X<=x)', 'Total')
+
+
+kable(house.data, digits = 2, col.names = c('(Y>y)', '(Y<=y)', 'Total'), align = "l", caption = 'Correlation Matrix of Observations')
+
+```
+
+```{r, echo=T, warning=F, message=F}
+house.data.prob <- matrix(c(round(xy.pos/total.obs,4), round(x.neg.y.pos/total.obs,4),round(x.pos.y.neg/total.obs,4),round(xy.neg/total.obs,4)), nrow=2, ncol=2)
+
+house.data.prob <- cbind(house.data.prob, Total = round(rowSums(house.data.prob),2))
+house.data.prob <- rbind(house.data.prob, Total = round(colSums(house.data.prob),2))
+
+rownames(house.data.prob) <- c('(X>x)', '(X<=x)', 'Total')
+
+
+kable(house.data.prob, digits = 4, col.names = c('(Y>y)', '(Y<=y)', 'Total'), align = "l", caption = 'Correlation Matrix of Joint Probabilities')
+```
+**_a._** $P(X>x~ |~ Y>y )$, read as _probability X (GrLivArea) is greater than 1130 square feet given Y (SalePrice) is greater than $163000._
+
+This is known as _conditional probability_ because we are computing the probability under a condition, `SalePrice` is greater than $163000. Two parts to a conditional probability, the outcome of interest and the condition. We can assume condition as information we know to be true, and this information usually can be used to describe outcome.
+
+
+$P(GrLivArea~ > 1130~ sq.ft. | SalePrice~ >~ \$163000) = \frac {\#~ cases~ where~ GrLivArea~ > 1130~ sq.ft.~ and~ SalePrice~ >~ \$163000 }{\# cases~ where~ SalePrice~ >~ \$163000}$
+
+= $\frac{720}{728} = `r round(720/728,4)*100` \%$
+
+Using the joint probabilities,
+
+= $\frac{0.4932}{0.5000} = `r round(0.4932/0.5000,4)*100` \%$
+
+Therefore, probability that `SalePrice` will be greater than $\$163000$, if `GrLivArea` is greater than $1130~ sq.ft.$ is $99\%$
+
+**_b._** $P(X>x~ \&~ Y>y)$, read a _probability X (GrLivArea) is greater than 1130 square feet and Y (SalePrice) is greater than $163000._
+
+This is known as _joint probability_ because we are computing the probability using outcomes of two variables. 
+
+$P(GrLivArea~ > 1130~ sq.ft. and SalePrice~ >~ \$163000) = \frac {\#~ cases~ where~ GrLivArea~ > 1130~ sq.ft.~ and~ SalePrice~ >~ \$163000 }{\# cases~ observed}$
+
+= $\frac{720}{1460} = `r round(720/1460,4)*100` \%$
+
+Therefore, probability that `GrLivArea` is greater than $1130~ sq.ft.$ and `SalePrice` will be greater than $\$163000$, is $`r round(720/1460,4)*100` \%$
+
+
+
+**_c._** $P(X<x~ |~ Y>y )$, read as _probability X (GrLivArea) is less than 1130 square feet given Y (SalePrice) is greater than $163000._ This is _conditional probability_.
+
+$P(GrLivArea~ < 1130~ sq.ft. | SalePrice~ >~ \$163000) = \frac {\#~ cases~ where~ GrLivArea~ < 1130~ sq.ft.~ and~ SalePrice~ >~ \$163000 }{\# cases~ where~ SalePrice~ >~ \$163000}$
+
+= $\frac{8}{728} = `r round(8/728,4)*100` \%$
+
+Using the joint probabilities,
+
+= $\frac{0.0055}{0.5000} = `r round(0.0055/0.5000,4)*100` \%$
+
+Therefore, probability that `SalePrice` will be greater than $\$163000$, if `GrLivArea` is less than $1130~ sq.ft.$ is $`r round(0.0055/0.5000,4)*100` \%$
+
+******
+
+
+####Relation to independence:
+
+$P(XY) = P(X)P(Y)$
+
+Above condition can be rewritten as
+
+$P(X \cap Y) = P(X)P(Y)$, condition will be true only when $X$ and $Y$ are independent.
+
+We can say that above grade living area and sale price are independent only when an increase or decrease in the area does not affect the probability of increase or decrease of the sale price of the house. We can test the condition by using the following hypothesis.
+
+Null Hypothesis($H_0$): Sale price of the house is not influenced by above grade living area.
+
+Alternative Hypothesis($H_A$): Above grade living area has significant influence on sale price of the house.
+
+If two variables were to be independent it should satisfy the condition
+
+$P(X>x~ |~ Y>y)P(Y>y) = P(X>x~ \cap ~ Y>y) = P(Y>y~ |~ X>x)P(X>x)$
+
+We will solve above conditions in two parts,
+
+$P(X>x~ |~ Y>y)P(Y>y) = P(X>x~ \cap ~ Y>y)$
+
+= $P(X>x~ |~ Y>y) =  \frac{P(X>x~ \cap ~ Y>y)}{P(Y>y)}$
+
+= $P(X>x~ \cap ~ Y>y)$ - probability where GrLivArea > 1130 sq.ft. and SalePrice > $163000
+
+= $P(Y>y)$ - probability where SalePrice > $163000
+
+= $P(X>x~ |~ Y>y) = \frac{720}{728} = `r round(720/728,4)*100` \%$
+
+Comparing other way,
+
+$P(Y>y~ |~ X>x)P(X>x) = P(X>x~ \cap ~ Y>y)$
+
+= $P(X>x~ \cap ~ Y>y) = P(Y>y~ |~ X>x)P(X>x)$
+
+= $P(Y>y~ |~ X>x) = \frac{P(X>x~ \cap ~ Y>y)}{P(X>x)}$
+
+= $P(X>x)$ - probability where GrLivArea > 1130 sq.ft.
+
+= $P(Y>y~ |~ X>x) = \frac{720}{1094} = `r round(720/1094,4)*100` \%$
+
+Since $P(X>x~ |~ Y>y)P(Y>y) = P(X>x~ \cap ~ Y>y) = P(Y>y~ |~ X>x)P(X>x)$, condition is not met we reject _Null Hypothesis_($H_0$), and accept _Alternative Hypothesis_($H_A$) that above grade living area has significant influence on sale price of the house.
+
+******
+
+####Using _Chi Square test
+
+```{r}
+
+house.data <- matrix(c(xy.pos, x.neg.y.pos,x.pos.y.neg,xy.neg), nrow=2, ncol=2)
+house.data
+chisq.test(house.data) 
+
+```
+Because we have only 2 variables `GrLivArea` and `SalePrice`, degrees of freedom(df) = 1. p-value = $2.2 \times 10^{-16}$ is almost "0", which is far smaller  compared to $0.05$ significance level.  So we reject _Null Hypothesis_($H_0$), and accept _Alternative Hypothesis_($H_A$) that`GrLivArea` has significant influence on sale price of the house.
+
+
+```{r, echo=T, warning=F, message=F}
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+house.stats <- matrix(data = NA, nrow=11,ncol=2)
+qarea <- quantile(select.data$GrLivArea)
+qprice <- quantile(select.data$SalePrice)
+
+house.stats[1,1] <- nrow(select.data)
+house.stats[1,2] <- nrow(select.data)
+
+house.stats[2,1] <- length(select.data$GrLivArea[!is.na(select.data$GrLivArea)])
+house.stats[2,2] <- length(select.data$SalePrice[!is.na(select.data$SalePrice)])
+
+house.stats[3,1] <- paste0(min(select.data$GrLivArea), ' sq. ft.')
+house.stats[3,2] <- paste0('$', min(select.data$SalePrice))
+
+house.stats[4,1] <- paste0(max(select.data$GrLivArea), ' sq. ft.')
+house.stats[4,2] <- paste0('$', max(select.data$SalePrice))
+
+house.stats[5,1] <- paste0(median(select.data$GrLivArea), ' sq. ft.')
+house.stats[5,2] <- paste0('$', median(select.data$SalePrice))
+
+house.stats[6,1] <- paste0(qarea[2], ' sq. ft.')
+house.stats[6,2] <- paste0('$', qprice[2])
+
+house.stats[7,1] <- paste0(qarea[4], ' sq. ft.')
+house.stats[7,2] <- paste0('$', qprice[4])
+
+house.stats[8,1] <- paste0(round(mean(select.data$GrLivArea),2), ' sq. ft.')
+house.stats[8,2] <- paste0('$', round(mean(select.data$SalePrice),2))
+
+house.stats[9,1] <- round(sd(select.data$GrLivArea),2)
+house.stats[9,2] <- round(sd(select.data$SalePrice),2)
+
+house.stats[10,1] <- paste0(getmode(select.data$GrLivArea), ' sq. ft.')
+house.stats[10,2] <- paste0('$', getmode(select.data$SalePrice))
+
+house.stats[11,1] <- paste0(IQR(select.data$GrLivArea), ' sq. ft.')
+house.stats[11,2] <- paste0('$', IQR(select.data$SalePrice))
+
+rownames(house.stats)<- c('Number of Observations', 'Non-missing values', 'Minimum','Maximum', 'Median','1st quartile','3rd quartile', 'Average(mean)', 'Standard deviation', 'Mode', 'Interquartile range(IQR)')
+
+kable(house.stats, digits = 2, 
+      col.names = c('GrLivArea', 'SalePrice'), 
+      align = "l", 
+      caption = 'Univariate Descriptive Statistics', "html") %>%  
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+******
+####Graphs
+          
+
+```{r}
+ggplot(train, aes(GrLivArea)) + geom_histogram(binwidth = 150, alpha=0.5, color="red", fill="light green")
+
+```
+Histogram shows distribution of "GrLivArea" . Average area is 1515.46 sq.ft. with standard deviation as 525.48. It also shows right tail, suggesting existence of outliers to the right of the average.
+
+
+```{r}
+ggplot(train, aes(SalePrice)) + geom_histogram(binwidth = 30000, alpha=0.5, color="red", fill="light green")
+
+```
+Histogram shows distribution of sale price of houses. Average sale price is $180921.2, with sandard deviation of $79442.5. It also shows right tail, suggesting existence of outliers to the right of the average
+
+
+```{r, fig.width = 2, fig.height=5}
+ggplot(train, aes(GrLivArea,SalePrice))+geom_boxplot(color="red", fill="light green", outlier.size=3)
+```
+
+
+
+```{r}
+d <- ggplot(train, aes(x = GrLivArea, y = SalePrice)) +
+    geom_boxplot() 
+  
+d
+```
+
+
+```{r}
+ggplot(train, aes(x=GrLivArea, y=SalePrice)) + geom_point(color="green", size=3, alpha=0.3) + stat_smooth(method="lm", color="red", se=FALSE)+ggtitle("Correlation of GrLivArea and SalePrice")
+```
+From the above boxplot, histograms and scatterplot , we can notice there are some outliers and the variation among "GrLivArea"  and "SalePrice" is not constant. This causes a longer tail on the right side.
+
+
+
+ 
+Quantiles of SalePrice
+```{r, echo=T, warning=F, message=F}
+kable(qarea, digits = 2, 
+      caption = 'Quartiles of "SalePrice" $k', 
+      align = 'l', padding = 10, "html") %>%  
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+####Linear Model
+```{r, echo=T, warning=F, message=F}
+lm_model_price_area <- lm(train$SalePrice ~ train$GrLivArea)
+summary(lm_model_price_area)
+
+```
+Multiple R-squared: 0.5021 means that regression model can explain 50.21% of the variation in data. 
+Residual standard error: 56070` suggests that the average distance of the data points from the fitted line is about 56070.  And 95% of times sale price should fall between 2*56070. 
+
+
+
+#Box-Cox Transformation
+As we can see, the variables "GrLivArea" and "SalePrice" is not normal distribution. Normality is an important assumption for many statistical techniques;  _Box-Cox transformation_ is a way to transform non-normal dependent variables into a normal shape. 
+
+For all positive values of $y$, it is defined by
+
+\[
+        y(\lambda)=\begin{cases}
+                \frac{y^{\lambda} - 1}{\lambda}, & \text{if }\lambda \neq 0\  \\
+                log~ y, & \text{if }\lambda = 0\
+        \end{cases}
+\]
+
+If $y$ has negative values then it is defined as
+
+\[
+        y(\lambda)=\begin{cases}
+                \frac{(y + {\lambda}_2)^{\lambda_1} - 1}{\lambda_1}, & \text{if }\lambda_1 \neq 0\  \\
+                log~ (y + {\lambda}_2), & \text{if }\lambda_1 = 0\
+        \end{cases}
+\]
+
+We will using R-function `boxcox` from `MASS` library to determine optimal lambda($\lambda$) value. 
+
+
+
+```{r, echo=T, warning=F, message=F}
+par(mfrow=c(1,2))
+house.bc <- boxcox(lm_model_price_area)
+house.bc.df <- as.data.frame(house.bc)
+lambda <- house.bc.df[which.max(house.bc.df$y),1]
+boxcox(lm_model_price_area, plotit=T, lambda=seq(0,0.20,by=0.05))
+```
+
+From above `boxcox` plot, optimal lambda($\lambda$) is 0.10`. Confidence interval runs between $0.02$ and $0.18$. Beause $\lambda$ is less than $0.5$, there is no need to transform data.
+
+
+
+However, we still performation the transformation to compare the result.
+```{r, echo=T, warning=F, message=F}
+train$SalePrice_trans <- ((train$SalePrice^lambda) -1)/lambda
+
+
+ggplot(train, aes(x=GrLivArea, y=SalePrice_trans)) +
+  geom_point(alpha=0.3, size=3)+
+  stat_smooth(method="lm", color="blue", se=FALSE) 
+  labs(title="Scatterplot GrLivArea Vs. Transformed SalePrice",
+       x="GrLivArea(sq.ft.)", y = "Transformed SalePrice")
+```
+
+```{r, echo=T, warning=F, message=F}
+house_t.lm <- lm(train$SalePrice_trans ~ train$GrLivArea)
+summary(house_t.lm)
+```
+
+As we see, Multiple R-squared value is smaller than the non-transformation model .  The transformation is worthless in this case.
+
+```{r}
+ggplot(train, aes(x=LotArea, y=SalePrice)) + geom_point(color="green", size=3, alpha=0.3) + stat_smooth(method="lm", color="red", se=FALSE)+ggtitle("Correlation of LotArea and SalePrice")
+```
+
+```{r}
+ggplot(train, aes(x=X1stFlrSF, y=SalePrice)) + geom_point(color="green", size=3, alpha=0.3) + stat_smooth(method="lm", color="red", se=FALSE)+ggtitle("Correlation of X1stFlrSF and SalePrice")
+```
+
+
+```{r}
+corr_data<-subset(train,select=c("X1stFlrSF","LotArea", "SalePrice"))
+
+
+correlation_matrix <- round(cor(corr_data),2)
+
+
+get_lower_tri<-function(correlation_matrix){
+    correlation_matrix[upper.tri(correlation_matrix)] <- NA
+    return(correlation_matrix)
+}
+  
+get_upper_tri <- function(correlation_matrix){
+    correlation_matrix[lower.tri(correlation_matrix)]<- NA
+    return(correlation_matrix)
+}
+  
+upper_tri <- get_upper_tri(correlation_matrix)
+  
+
+melted_correlation_matrix <- melt(upper_tri, na.rm = TRUE)
+
+
+ggheatmap <- ggplot(data = melted_correlation_matrix, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Pearson\nCorrelation") +
+  theme_minimal()+ 
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 15, hjust = 1))+
+ coord_fixed()
+
+
+ 
+ggheatmap + 
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  axis.text.x=element_text(size=rel(0.8), angle=90),
+  axis.text.y=element_text(size=rel(0.8)),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwicrash_training2h = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5))
+```
+
+Test the hypotheses that the correlations between each pairwise set of variables is 0 and provide a 80% confidence interval.
+```{r}
+cor.test(corr_data$X1stFlrSF, corr_data$SalePrice, method = c("pearson", "kendall", "spearman"), conf.level = 0.8)
+```
+
+```{r}
+cor.test(corr_data$LotArea, corr_data$SalePrice, method = c("pearson", "kendall", "spearman"), conf.level = 0.8)
+```
+```{r}
+cor.test(corr_data$X1stFlrSF, corr_data$LotArea, method = c("pearson", "kendall", "spearman"), conf.level = 0.8)
+```
+For every two variables, we have generated an 80 percent of confidence interval. All the  p values are < 0.001. Hence, for the three iterations of testing, we can reject the the null hypothesis and conclude that the true correlation is not 0 for the selected variables.
+
+
+Discuss the meaning of your analysis. Would you be worried about familywise error? Why or why not?
+
+family wise error is a measurment of error when it comes to performing several iterations of estimates. This might cause results to be interpreted as being more independent then they really are. Our three tests of correlation had low p values, hence we can use that to derive the familywise error rate.
+```{r}
+n=3
+
+alpha=(0.5)/n
+
+print(paste0("Familywise error rate is ", 1-alpha))
+```
+
+
+
+
+
+
+
+#Linear Algebra 
+5 points. Linear Algebra and Correlation.  Invert your correlation matrix from above. (This is known as the precision matrix and contains variance inflation factors on the diagonal.) Multiply the correlation matrix by the precision matrix, and then multiply the precision matrix by the correlation matrix. Conduct LU decomposition on the matrix. 
+
+Following are the three untransformed independent variables (LotArea,TotalBsmtSF,GrLivArea ) and one dependent variable(SalePrice).
+
+
+correlation provides trends shared between two variables. If the value is close to `1` variables are positively related. If the value is close to `-1`, then variables are negatively related or inversely related. If the value is close to 0, the two variables are less correlated.  
+
+
+```{r, echo=T, warning=F, message=F}
+select.Cols <- c('LotArea','TotalBsmtSF','GrLivArea', 'SalePrice')
+select.data <- train[select.Cols]
+
+pearson.cor <- cor(select.data,method="pearson")
+pearson.cor
+```
+
+
+Correlation between TotalBsmtSF and SalePrice is 0.61. It explains bigger basement area will result in the better sale price. Square value of the coefficient is 0.3721. It means 37.21% percent of the variance in the sale price of a house can be explained by the total area of the basement.
+
+Correlation between GrLivArea and SalePrice is 0.71. It explains bigger living area will result in the better sale price. Square value of the coefficient is 0.5041. It means 50.41% percent of the variance in the sale price of a house can be explained by the total above grade living area.
+
+
+#Precision matrix is inverse of Correlation Matrix.
+```{r}
+inv.cor <- solve(pearson.cor)
+inv.cor
+```
+
+#Matrix Multiplication
+Correlation Matrix multiplied by Precision Matrix
+
+```{r}
+round(pearson.cor %*% inv.cor)
+```
+
+
+
+
+
+Precision Matrix multiplied by Correlation Matrix
+
+```{r}
+round(inv.cor %*% pearson.cor)
+```
+Correlation Matrix multiplied by Precision Matrix and Precision Matrix multiplied by Correlation Matrix results in identity matrix.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Calculus-Based Probability & Statistics
+5 points.  Calculus-Based Probability & Statistics.  Many times, it makes sense to fit a closed form distribution to data.  Select a variable in the Kaggle.com training dataset that is skewed to the right, shift it so that the minimum value is absolutely above zeroif necessary.  Then load the MASS package and run fitdistr to fit an exponential probability density function.  (See  https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/fitdistr.html ).  Find the optimal value of ???for this distribution, and then take 1000 samples from this exponential distribution using this value (e.g., rexp(1000, ???)).  Plot a histogram and compare it with a histogram of your original variable. Using the exponential pdf, find the 5th and 95th percentiles using the cumulative distribution function (CDF).  Also generate a 95% confidence interval from the empirical data, assuming normality.  Finally, provide the empirical 5th percentile and 95th percentile of the data.  Discuss.
+
+
+
+
+
+
+In this part, professor suggested a variable which is right skewed, shift it so that the minimum value is absolutely above zeroif necessary.  After review the numerical data, we found that most variables are left skewed. It makes perfect sense that most house are smaller and medium size.  The only rights skewed variables are related to years, because most houses have been built or renovated recently.
+
+
+
+```{r}
+ggplot(train, aes(x=YearBuilt)) + geom_histogram(binwidth=10,color="red", fill="light green")
+```
+
+
+```{r}
+ggplot(train, aes(x=YearBuilt, y=SalePrice)) + geom_point(color="green", size=3, alpha=0.3) + stat_smooth(method="lm", color="red", se=FALSE)+ggtitle("Correlation of YearBuilt and SalePrice")
+```
+In general, YearBuilt should be postitive linear correlated with SalePrice.  As long as the inflation, raise of wages and increase costof building matereial are playing an important role to push the SalePrice high.  However, a few high ends units play a role as outlier to shift the linear correlation.
+
+```{r, echo=T, warning=F, message=F}
+selectCols <- c('YearBuilt', 'SalePrice')
+select.data <- train[selectCols]
+
+fit.output <- fitdistr(select.data$YearBuilt, densfun="normal")
+fit.output
+```
+
+Output of "optim" function, average($\mu$) = 1971.27 and standard deviation($\sigma$) =30.19.
+
+To find the optimal estimates, I will be using 'optim' and 'dnorm' functions. 'dnorm' is the R function that calculates the probability density of the normal distribution. Because YearBuilt should be greater than zero, we will use the output of 'fitdistr' to get optimum values. 
+
+
+```{r}
+likelihood.func <- function(params) { -sum(dnorm(select.data$YearBuilt, params[1], params[2], log=TRUE)) }
+optim.output <- optim(c(fit.output$estimate[1], 30), likelihood.func)   
+optim.output
+```
+Output of 'optim function', average($\mu$) = 1971.28 and standard deviation($\sigma$) = 30.18.
+
+Apart from rounding, optim function produced same output as 'fitdistr'.
+
+
+#Sample Data
+
+To generate 1000 samples, 'rnorm' function with the optimal parameters generated by 'optim' function will be used.
+
+
+```{r}
+#generate 1000 samples
+year.sample <- rnorm(n=1000, mean=round(optim.output$par[1],2), sd=round(optim.output$par[2],2))
+year.sample <- data.frame(year.sample)
+names(year.sample)[1] <- "Samples"
+
+select.data$yearSplit <- as.factor(select.data[,1]>=round(optim.output$par[1],2))
+
+a <- ggplot(select.data, aes(YearBuilt, fill=select.data$yearSplit)) + 
+          geom_histogram(color="light pink", binwidth=10) + 
+          scale_x_continuous(name = "Year") +
+          scale_fill_manual(values=c("light green","green"),labels=c("Year >= 1971","Year < 1971")) +
+          ylab("Number of Observations") +
+          ggtitle("Observed Year Distribution") +
+          geom_vline(xintercept = mean(select.data$YearBuilt), color="red", labels="Average", lwd=1)
+
+
+year.sample$yearSplit <- as.factor(year.sample[,1]>=round(optim.output$par[1],2))
+
+b <- ggplot(year.sample, aes(Samples, fill=year.sample$yearSplit)) + 
+          geom_histogram(color="light pink", binwidth=10) + 
+          scale_x_continuous(name = "Sample Year") +
+          scale_fill_manual(values=c("light green","green"),labels=c("Year >= 1971","Year < 1971")) +
+          ylab("Number of Samples") +
+          ggtitle("Sample Year Distribution") +
+          geom_vline(xintercept = mean(select.data$YearBuilt), color="red", labels="Average", lwd=1)
+
+grid.arrange(b, a, nrow = 2, top='Sampling Data and Original Data')
+
+```
+To generate 1000 samples, 'rnorm' function with the optimal parameters generated by 'optim' function will be used.
+
+Mean and SD of samples and observed data is same, 1971, 30 respectively.  'Red line' represents 'average'of the data.
+
+Actual observed data have some outliers, while sample data does not have outliers.  
+
+
+#Goodness of fit test
+`Chi-Square` test will be used to see if the sample generated represents a normal distribution. In our prediction, there should be 50% cases where year is greater than or equal to `average` and 50% cases less than `average`.
+
+Hypothesis,
+
+$H_0$ : Sample data follow a specified distribution.
+
+$H_A$ : Sample data do not follow the specified distribution.
+
+```{r}
+#Chi-square test
+
+#Ratio of actual observed values
+null_p<-c(0.50, 0.50)
+
+#Samples generated
+sample.rows <- c(sum(year.sample$Samples >= round(optim.output$par[1],2), na.rm=TRUE), sum(year.sample$Samples < round(optim.output$par[1],2), na.rm=TRUE))
+
+#Goodness-of-Fit Test
+chisq.test(sample.rows, p=null_p)
+```
+
+Following is a chi square test to see whether sample represents actual observed data. 
+Hypothesis:
+$H_0$: Sample data represents actual observed data.
+$H_A$: Sample data do not represent actual observed data.
+
+```{r}
+#Ratio of actual values
+null_p<-c(round((sum(select.data$YearBuilt >= round(optim.output$par[1],2), na.rm=TRUE)) / nrow(select.data),2), round((sum(select.data$YearBuilt < round(optim.output$par[1],2), na.rm=TRUE)) / nrow(select.data),2))
+
+#Samples generated
+sample.rows <- c(sum(year.sample$Samples >= round(optim.output$par[1],2), na.rm=TRUE), sum(year.sample$Samples < round(optim.output$par[1],2), na.rm=TRUE))
+
+#Goodness-of-Fit Test
+chisq.test(sample.rows, p=null_p)
+```
+Because 'p-value'is 0.8 which is greater than 0.05, we accept null hypothesis$H0$. In conclusion, that sample data represents actual observed data.
+
+
+
+##10 points.  Modeling.  Build some type of multiple regression  model and submit your model to the competition board.  Provide your complete model summary and results with analysis.  Report your Kaggle.com user name and score.
+
+At the begining, we use 'glimpse' function to notice that the database not only includes numeric variables, but also categorical variables or ordinal variables.  Of couse, we have no problem to deal with numerica variables.  For categorical or ordinal varibles, if they are already been converted as number, we can consider it as numbers for building model.  If it is a vector of characters, it will be hard for us to deal with.  We are not realtors, so it is hard to give a rank of the character vector.  But we try our best to incoporate a couple of categorical variables in our study.  
+
+Here is a plan to deal with Data: 
+1. For some variables with more than 50% of missing information such as "Alley", "PoolQC", "Fence", "Miss Feature",  I will drop it.
+2. For numerical variables, I will try to keep as many as possible.  If there is missing information, I can impute it with mean.
+3. For categorical variables, it is hard to analysis using "as is" condition.  Too drop all categorical data is not wise, because it has lots of information.  For this kind of situation, I like to keep some categorical variables for analysis by transforming from a factor in character into an ordinal variables coded with a serials of numbers.  For some categorical variables which can not each to give a ordinal code, I am going to drop it.  
+
+```{r}
+head(train)
+```
+Drop the SalePrice_trans from dataframe
+```{r}
+train$SalePrice_trans <- NULL
+```
+
+```{r}
+train <- read.csv("https://raw.githubusercontent.com/johnpannyc/data605-final/master/train.csv")
+```
+
+#Simplify train database by using the above principles
+```{r}
+train1 <- dplyr::select(train,MSSubClass,Neighborhood,LotFrontage,LotArea,BldgType,OverallQual,OverallCond,YearBuilt,YearRemodAdd,MasVnrArea,BsmtFinSF1,BsmtFinSF2,BsmtUnfSF,TotalBsmtSF,CentralAir,X1stFlrSF,X2ndFlrSF,LowQualFinSF,GrLivArea,TotRmsAbvGrd,GarageCars,GarageArea,WoodDeckSF,OpenPorchSF,EnclosedPorch,ScreenPorch,X3SsnPorch,PoolArea,MiscVal,MoSold,YrSold,SaleCondition,SalePrice)
+```
+
+
+```{r}
+glimpse(train1)
+```
+
+
+Get the rank of average Neighborhood Sales Price
+Neighborhood is an important factor for per square foot price.  Because I am not familiar with the neighborhood in dataset, I will get the median sale price of each neighborhood first. 
+
+```{r}
+df <- train %>%
+  
+  group_by(Neighborhood) %>%
+  summarize(medianSalePrice = median(SalePrice)) %>% arrange(desc(medianSalePrice))
+df
+
+```
+For each neighborhood, I will impute as a score from 25 to 1 according the medianSalePrice from Highest (NridgHt) to Lowest (MeadowV)
+
+
+
+```{r}
+train1$Neighborhood <- as.character(train1$Neighborhood)
+train1$Neighborhood[which(train1$Neighborhood == "NridgHt")] <- "25"
+train1$Neighborhood[which(train1$Neighborhood == "NoRidge")] <- "24"
+train1$Neighborhood[which(train1$Neighborhood == "StoneBr")] <- "23"
+train1$Neighborhood[which(train1$Neighborhood == "Timber")] <- "22"
+train1$Neighborhood[which(train1$Neighborhood == "Somerst")] <- "21"
+train1$Neighborhood[which(train1$Neighborhood == "Veenker")] <- "20"
+train1$Neighborhood[which(train1$Neighborhood == "Crawfor")] <- "19"
+train1$Neighborhood[which(train1$Neighborhood == "ClearCr")] <- "18"
+train1$Neighborhood[which(train1$Neighborhood == "CollgCr")] <- "17"
+train1$Neighborhood[which(train1$Neighborhood == "Blmngtn")] <- "16"
+
+train1$Neighborhood[which(train1$Neighborhood == "NWAmes")] <- "15"
+train1$Neighborhood[which(train1$Neighborhood == "Gilbert")] <- "14"
+train1$Neighborhood[which(train1$Neighborhood == "SawyerW")] <- "13"
+train1$Neighborhood[which(train1$Neighborhood == "Mitchel")] <- "12"
+train1$Neighborhood[which(train1$Neighborhood == "NPkVill")] <- "11"
+train1$Neighborhood[which(train1$Neighborhood == "NAmes")] <- "10"
+train1$Neighborhood[which(train1$Neighborhood == "SWISU")] <- "9"
+train1$Neighborhood[which(train1$Neighborhood == "Blueste")] <- "8"
+train1$Neighborhood[which(train1$Neighborhood == "Sawyer")] <- "7"
+train1$Neighborhood[which(train1$Neighborhood == "BrkSide")] <- "6"
+
+train1$Neighborhood[which(train1$Neighborhood == "Edwards")] <- "5"
+train1$Neighborhood[which(train1$Neighborhood == "OldTown")] <- "4"
+train1$Neighborhood[which(train1$Neighborhood == "BrDale")] <- "3"
+train1$Neighborhood[which(train1$Neighborhood == "IDOTRR")] <- "2"
+train1$Neighborhood[which(train1$Neighborhood == "MeadowV")] <- "1"
+
+
+train1$Neighborhood <- as.numeric(train1$Neighborhood)
+```
+
+
+
+
+
+Convert indicator variables to numbers.
+```{r}
+train1$CentralAir <- as.character(train1$CentralAir)
+train1$CentralAir[which(train1$CentralAir == "Y")] <- "1"
+train1$CentralAir[which(train1$CentralAir == "N")] <- "0"
+train1$CentralAir <- as.numeric(train1$CentralAir)
+
+
+
+train1$CentralAir <- as.character(train1$CentralAir)
+train1$CentralAir[which(train1$CentralAir == "Y")] <- "1"
+train1$CentralAir[which(train1$CentralAir == "N")] <- "0"
+train1$CentralAir <- as.numeric(train1$CentralAir)
+
+train1$SaleCondition <- as.character(train1$SaleCondition)
+train1$SaleCondition[which(train1$SaleCondition == "Normal")] <- "1"
+train1$SaleCondition[which(train1$SaleCondition == "Abnorml")] <- "0"
+train1$SaleCondition[which(train1$SaleCondition == "AdjLand")] <- "0"
+train1$SaleCondition[which(train1$SaleCondition == "Alloca")] <- "0"
+train1$SaleCondition[which(train1$SaleCondition == "Family")] <- "0"
+train1$SaleCondition[which(train1$SaleCondition == "Partial")] <- "0"
+train1$SaleCondition[which(train1$SaleCondition == "N")] <- "0"
+train1$SaleCondition <- as.numeric(train1$SaleCondition)
+
+
+
+train1$BldgType <- as.character(train1$BldgType)
+train1$BldgType[which(train1$BldgType == "1Fam")] <- "5"
+train1$BldgType[which(train1$BldgType == "2fmCon")] <- "4"
+train1$BldgType[which(train1$BldgType == "Duplex")] <- "3"
+train1$BldgType[which(train1$BldgType == "Twnhs")] <- "2"
+train1$BldgType[which(train1$BldgType == "TwnhsE")] <- "1"
+train1$BldgType <- as.numeric(train1$BldgType)
+```
+
+```{r}
+sapply(train1, function(x) sum(is.na(x))) %>% kable() %>% kable_styling()
+```
+
+Impute missing data by mean
+```{r}
+train1$LotFrontage[is.na(train1$LotFrontage)] <- mean(train1$LotFrontage, na.rm=TRUE)
+train1$MasVnrArea[is.na(train1$MasVnrArea)] <- mean(train1$MasVnrArea, na.rm=TRUE)
+```
+
+```{r}
+vis_miss(train1)
+```
+
+```{r}
+sapply(train1, function(x) sum(is.na(x))) %>% kable() %>% kable_styling()
+
+```
+
+
+
+
+
+View the category variables by 
+```{r}
+table(train1$ BldgType)
+```
+
+```{r}
+head(train1)
+```
+
+
+```{r}
+glimpse(train1)
+```
+
+```{r}
+vis_miss(train1)
+```
+
+```{r}
+mb_cor <- cor(train1)
+
+round(mb_cor, 3)
+```
+
+
+```{r}
+M<-cor(train1)
+corrplot(M, method="number")
+```
+
+#Colinearity
+From the correlation matrix and plot, we find that 'TotalBsmtSF' is highly associated with 'GrLivArea (0.825)' and 'BsmtFinSF1'.  So we will DROP 'TotalBsmtSF'.  
+
+'GrLivArea (0.825)' is also highly with 'TotRmsAbvGrd'(0.825), 'X1stFlrSF'(0.566) and X2ndFlrSF(0.688).  So we will also DROP the above three variables.
+
+
+```{r}
+train1$TotalBsmtSF <- NULL
+train1$TotRmsAbvGrd<- NULL
+train1$X1stFlrSF<- NULL
+train1$X2ndFlrSF<- NULL
+```
+
+
+
+
+#Outlinear
+From the density plots and summary.  We feel that the following varibles ("LotFrontage","LotArea","MasVnrArea","BsmtFinSF1","BsmtFinSF2","BsmtUnfSF","GrLivArea","SalePrice","WoodDeckSF","OpenPorchSF","EnclosedPorch","ScreenPorch","X3SsnPorch","PoolArea","MiscVal") may have outliers.  We will replace the outliers. 
+
+replace with outliers
+```{r}
+replaceOutliers = function(x) { 
+
+    quantiles <- quantile( x, c(0.5,.95 ) )
+    x[ x < quantiles[1] ] <- quantiles[1]
+   
+    x[ x > quantiles[2] ] <- quantiles[2]
+    return(x)
+}
+   
+train1$LotFrontage <- replaceOutliers(train1$LotFrontage)
+train1$LotArea <- replaceOutliers(train1$LotArea)
+train1$MasVnrArea <- replaceOutliers(train1$MasVnrArea)
+train1$BsmtFinSF1 <- replaceOutliers(train1$BsmtFinSF1)
+train1$BsmtFinSF2 <- replaceOutliers(train1$BsmtFinSF2)
+train1$BsmtUnfSF <- replaceOutliers(train1$BsmtUnfSF)
+train1$GrLivArea <- replaceOutliers(train1$GrLivArea)
+train1$SalePrice <- replaceOutliers(train1$SalePrice)
+train1$WoodDeckSF <- replaceOutliers(train1$WoodDeckSF)
+train1$OpenPorchSF <- replaceOutliers(train1$OpenPorchSF)
+train1$EnclosedPorch <- replaceOutliers(train1$EnclosedPorch)
+train1$ScreenPorch <- replaceOutliers(train1$ScreenPorch)
+train1$X3SsnPorch <- replaceOutliers(train1$X3SsnPorch)
+train1$PoolArea <- replaceOutliers(train1$PoolArea)
+train1$MiscVal <- replaceOutliers(train1$MiscVal)
+```  
+
+```{r}
+summary(train1)
+```
+
+```{r}
+vis_miss(train1)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+Full Model (including all above variables)
+```{r}
+full.model <- lm(SalePrice~MSSubClass+Neighborhood+LotFrontage+LotArea+BldgType+OverallQual+OverallCond+YearBuilt+YearRemodAdd+MasVnrArea+BsmtFinSF1+BsmtFinSF2+BsmtUnfSF+CentralAir+LowQualFinSF+GrLivArea+GarageCars+GarageArea+WoodDeckSF+OpenPorchSF+EnclosedPorch+ScreenPorch+X3SsnPorch+PoolArea+MiscVal+MoSold+YrSold+SaleCondition, data=train1)
+summary(full.model)
+```
+
+Reduced Model: only positive variable in full model
+```{r}
+reduced.model <- lm(SalePrice~MSSubClass+Neighborhood+LotArea+OverallQual+YearBuilt+YearRemodAdd+MasVnrArea+BsmtFinSF1+BsmtUnfSF+CentralAir+GrLivArea+WoodDeckSF+OpenPorchSF+SaleCondition, data=train1)
+summary(reduced.model)
+```
+
+Backward elimination
+```{r}
+backward.model<- step (full.model, direction = "backward") 
+summary(backward.model)
+```
+
+
+MODEL4:- Create model With top 5 high correlation columns as features
+```{r}
+cors <- sapply(train1, cor, y=train1$SalePrice)
+mask <- (rank(-abs(cors)) <= 6 )
+best5.pred <- train1[, mask]
+
+best5.pred <- subset(best5.pred, select = c(-SalePrice) )
+summary(best5.pred)
+```
+Stepwise backward regression    
+```{r}    
+model.best5 <- lm (SalePrice ~     Neighborhood + OverallQual + GrLivArea + GarageCars + GarageArea, data=train1)
+
+model.best5<- step (model.best5, direction = "backward")    
+```        
+
+```{r}
+summary(model.best5)
+```
+
+```{r}
+anova(full.model,reduced.model,backward.model, model.best5, test="Chisq")
+```
+
+Prepare test data
+```{r}
+test<- read.csv("https://raw.githubusercontent.com/johnpannyc/data605-final/master/test.csv")
+```
+
+```{r}
+names(test)
+```
+
+```{r}
+test1 <- dplyr::select(test,Id,MSSubClass,Neighborhood,LotFrontage,LotArea,BldgType,OverallQual,OverallCond,YearBuilt,YearRemodAdd,MasVnrArea,BsmtFinSF1,BsmtFinSF2,BsmtUnfSF,TotalBsmtSF,CentralAir,X1stFlrSF,X2ndFlrSF,LowQualFinSF,GrLivArea,TotRmsAbvGrd,GarageCars,GarageArea,WoodDeckSF,OpenPorchSF,EnclosedPorch,ScreenPorch,X3SsnPorch,PoolArea,MiscVal,MoSold,YrSold,SaleCondition)
+```
+
+
+
+```{r}
+test1$Neighborhood <- as.character(test1$Neighborhood)
+test1$Neighborhood[which(test1$Neighborhood == "NridgHt")] <- "25"
+test1$Neighborhood[which(test1$Neighborhood == "NoRidge")] <- "24"
+test1$Neighborhood[which(test1$Neighborhood == "StoneBr")] <- "23"
+test1$Neighborhood[which(test1$Neighborhood == "Timber")] <- "22"
+test1$Neighborhood[which(test1$Neighborhood == "Somerst")] <- "21"
+test1$Neighborhood[which(test1$Neighborhood == "Veenker")] <- "20"
+test1$Neighborhood[which(test1$Neighborhood == "Crawfor")] <- "19"
+test1$Neighborhood[which(test1$Neighborhood == "ClearCr")] <- "18"
+test1$Neighborhood[which(test1$Neighborhood == "CollgCr")] <- "17"
+test1$Neighborhood[which(test1$Neighborhood == "Blmngtn")] <- "16"
+
+test1$Neighborhood[which(test1$Neighborhood == "NWAmes")] <- "15"
+test1$Neighborhood[which(test1$Neighborhood == "Gilbert")] <- "14"
+test1$Neighborhood[which(test1$Neighborhood == "SawyerW")] <- "13"
+test1$Neighborhood[which(test1$Neighborhood == "Mitchel")] <- "12"
+test1$Neighborhood[which(test1$Neighborhood == "NPkVill")] <- "11"
+test1$Neighborhood[which(test1$Neighborhood == "NAmes")] <- "10"
+test1$Neighborhood[which(test1$Neighborhood == "SWISU")] <- "9"
+test1$Neighborhood[which(test1$Neighborhood == "Blueste")] <- "8"
+test1$Neighborhood[which(test1$Neighborhood == "Sawyer")] <- "7"
+test1$Neighborhood[which(test1$Neighborhood == "BrkSide")] <- "6"
+
+test1$Neighborhood[which(test1$Neighborhood == "Edwards")] <- "5"
+test1$Neighborhood[which(test1$Neighborhood == "OldTown")] <- "4"
+test1$Neighborhood[which(test1$Neighborhood == "BrDale")] <- "3"
+test1$Neighborhood[which(test1$Neighborhood == "IDOTRR")] <- "2"
+test1$Neighborhood[which(test1$Neighborhood == "MeadowV")] <- "1"
+
+
+test1$Neighborhood <- as.numeric(test1$Neighborhood)
+```
+
+Convert indicator variables to numbers.
+```{r}
+test1$CentralAir <- as.character(test1$CentralAir)
+test1$CentralAir[which(test1$CentralAir == "Y")] <- "1"
+test1$CentralAir[which(test1$CentralAir == "N")] <- "0"
+test1$CentralAir <- as.numeric(test1$CentralAir)
+
+
+
+test1$CentralAir <- as.character(test1$CentralAir)
+test1$CentralAir[which(test1$CentralAir == "Y")] <- "1"
+test1$CentralAir[which(test1$CentralAir == "N")] <- "0"
+test1$CentralAir <- as.numeric(test1$CentralAir)
+
+test1$SaleCondition <- as.character(test1$SaleCondition)
+test1$SaleCondition[which(test1$SaleCondition == "Normal")] <- "1"
+test1$SaleCondition[which(test1$SaleCondition == "Abnorml")] <- "0"
+test1$SaleCondition[which(test1$SaleCondition == "AdjLand")] <- "0"
+test1$SaleCondition[which(test1$SaleCondition == "Alloca")] <- "0"
+test1$SaleCondition[which(test1$SaleCondition == "Family")] <- "0"
+test1$SaleCondition[which(test1$SaleCondition == "Partial")] <- "0"
+test1$SaleCondition[which(test1$SaleCondition == "N")] <- "0"
+test1$SaleCondition <- as.numeric(test1$SaleCondition)
+
+
+
+test1$BldgType <- as.character(test1$BldgType)
+test1$BldgType[which(test1$BldgType == "1Fam")] <- "5"
+test1$BldgType[which(test1$BldgType == "2fmCon")] <- "4"
+test1$BldgType[which(test1$BldgType == "Duplex")] <- "3"
+test1$BldgType[which(test1$BldgType == "Twnhs")] <- "2"
+test1$BldgType[which(test1$BldgType == "TwnhsE")] <- "1"
+test1$BldgType <- as.numeric(test1$BldgType)
+```
+
+
+```{r}
+sapply(test1, function(x) sum(is.na(x))) %>% kable() %>% kable_styling()
+```
+
+
+Impute missing data by mean
+```{r}
+test1$LotFrontage[is.na(test1$LotFrontage)] <- mean(test1$LotFrontage, na.rm=TRUE)
+test1$MasVnrArea[is.na(test1$MasVnrArea)] <- mean(test1$MasVnrArea, na.rm=TRUE)
+test1$BsmtFinSF1[is.na(test1$BsmtFinSF1)] <- mean(test1$BsmtFinSF1, na.rm=TRUE)
+test1$BsmtFinSF2[is.na(test1$BsmtFinSF2)] <- mean(test1$BsmtFinSF2, na.rm=TRUE)
+test1$BsmtUnfSF[is.na(test1$BsmtUnfSF)] <- mean(test1$BsmtUnfSF, na.rm=TRUE)
+test1$TotalBsmtSF[is.na(test1$TotalBsmtSF)] <- mean(test1$TotalBsmtSF, na.rm=TRUE)
+test1$GarageCars[is.na(test1$GarageCars)] <- mean(test1$GarageCars, na.rm=TRUE)
+test1$GarageArea[is.na(test1$GarageArea)] <- mean(test1$GarageArea, na.rm=TRUE)
+```
+
+Delete the following columns for colinearity
+```{r}
+train1$TotalBsmtSF <- NULL
+train1$TotRmsAbvGrd<- NULL
+train1$X1stFlrSF<- NULL
+train1$X2ndFlrSF<- NULL
+```
+
+replace with outliers
+```{r}
+replaceOutliers = function(x) { 
+
+    quantiles <- quantile( x, c(0.5,.95 ) )
+    x[ x < quantiles[1] ] <- quantiles[1]
+   
+    x[ x > quantiles[2] ] <- quantiles[2]
+    return(x)
+}
+   
+train1$LotFrontage <- replaceOutliers(train1$LotFrontage)
+train1$LotArea <- replaceOutliers(train1$LotArea)
+train1$MasVnrArea <- replaceOutliers(train1$MasVnrArea)
+train1$BsmtFinSF1 <- replaceOutliers(train1$BsmtFinSF1)
+train1$BsmtFinSF2 <- replaceOutliers(train1$BsmtFinSF2)
+train1$BsmtUnfSF <- replaceOutliers(train1$BsmtUnfSF)
+train1$GrLivArea <- replaceOutliers(train1$GrLivArea)
+train1$WoodDeckSF <- replaceOutliers(train1$WoodDeckSF)
+train1$OpenPorchSF <- replaceOutliers(train1$OpenPorchSF)
+train1$EnclosedPorch <- replaceOutliers(train1$EnclosedPorch)
+train1$ScreenPorch <- replaceOutliers(train1$ScreenPorch)
+train1$X3SsnPorch <- replaceOutliers(train1$X3SsnPorch)
+train1$PoolArea <- replaceOutliers(train1$PoolArea)
+train1$MiscVal <- replaceOutliers(train1$MiscVal)
+```  
+
+
+```{r}
+summary(test1)
+```
+
+```{r}
+par(mfrow=c(3, 3))
+colnames <- dimnames(test1)[[2]]
+
+  for(col in 2:ncol(test1)) {
+
+    d <- density(na.omit(test1[,col]))
+   
+    plot(d, type="n", main=colnames[col])
+    polygon(d, col="light green", border="red")
+  }
+```
+`
+
+
+##Price Prediction
+
+#Full Model Prediction
+```{r, echo=T, warning=F, message=F}
+full.model.pred <- cbind(test1, s<-predict(full.model, test1))
+names(full.model.pred)[ncol(full.model.pred)] <- "SalePrice"
+
+full.model.submission <- dplyr::select(full.model.pred,Id,SalePrice)
+
+write.csv(full.model.submission, file="full.model.submission.csv")
+```
+
+#Reduced Model Prediction
+
+```{r, echo=T, warning=F, message=F}
+reduced.model.pred <- cbind(test1, s<-predict(reduced.model, test1))
+names(reduced.model.pred)[ncol(reduced.model.pred)] <- "SalePrice"
+
+reduced.model.submission <- dplyr::select(reduced.model.pred,Id,SalePrice)
+
+write.csv(reduced.model.submission, file="reduced.model.submission.csv")
+```
+
+#Backward Model Prediction
+
+```{r, echo=T, warning=F, message=F}
+backward.model.pred <- cbind(test1, s<-predict(backward.model, test1))
+names(backward.model.pred)[ncol(backward.model.pred)] <- "SalePrice"
+
+backward.model.submission <- dplyr::select(backward.model.pred,Id,SalePrice)
+
+write.csv(backward.model.submission, file="backward.model.submission.csv")
+```
+
+
+#Model Best 5
+```{r, echo=T, warning=F, message=F}
+model.best5.pred <- cbind(test1, s<-predict(model.best5, test1))
+names(model.best5.pred)[ncol(model.best5.pred)] <- "SalePrice"
+
+model.best5.submission <- dplyr::select(model.best5.pred,Id,SalePrice)
+
+write.csv(model.best5.submission, file="model.best5.submission.csv")
+```
+
+
+
+Summary of 4 models on SalePrice
+```{r}
+summary(full.model.submission$SalePrice)
+summary(reduced.model.submission$SalePrice)
+summary(backward.model.submission$SalePrice)
+summary(model.best5.submission$SalePrice)
+```
+
+Histogram of 4 models
+```{r}
+ggplot(full.model.submission, aes(SalePrice)) + geom_histogram(binwidth = 20000, alpha=0.5, color="red", fill="light green")
+ggplot(reduced.model.submission, aes(SalePrice)) + geom_histogram(binwidth = 20000, alpha=0.5, color="red", fill="light green")
+ggplot(backward.model.submission, aes(SalePrice)) + geom_histogram(binwidth = 20000, alpha=0.5, color="red", fill="light green")
+ggplot(model.best5.submission, aes(SalePrice)) + geom_histogram(binwidth = 20000, alpha=0.5, color="red", fill="light green")
+```
+
+
+After submitted the csv file from the the above model.  Here is the scores: Best 5 (0.213), Backward (0.186), Full (0.185), Reduced(0.185). 
+
+
+
+
+
+
+
+
+
+
